@@ -17,13 +17,13 @@ typedef unsigned long int uint32;
 #include "../components/lynx/handy.h"
 #include "../components/lynx/myadd.h"
 
-#include "../components/odroid/odroid_settings.h"
-#include "../components/odroid/odroid_audio.h"
-#include "../components/odroid/odroid_input.h"
-#include "../components/odroid/odroid_system.h"
-#include "../components/odroid/odroid_display.h"
-#include "../components/odroid/odroid_sdcard.h"
-#include "../components/odroid/odroid_ui.h"
+#include "../../odroid-go-common/components/odroid/odroid_settings.h"
+#include "../../odroid-go-common/components/odroid/odroid_audio.h"
+#include "../../odroid-go-common/components/odroid/odroid_input.h"
+#include "../../odroid-go-common/components/odroid/odroid_system.h"
+#include "../../odroid-go-common/components/odroid/odroid_display.h"
+#include "../../odroid-go-common/components/odroid/odroid_sdcard.h"
+#include "../../odroid-go-common/components/odroid/odroid_ui.h"
 
 #include <dirent.h>
 #include <stdarg.h>
@@ -323,6 +323,37 @@ NOINLINE void PowerDown()
     abort();
 }
 
+NOINLINE void return_to_bootmanager()
+{
+    uint16_t* param = TASK_BREAK;
+    void *exitAudioTask = NULL;
+
+    // Clear audio to prevent studdering
+    printf("PowerDown: stopping audio.\n");
+    //odroid_audio_terminate();
+    xQueueSend(audioQueue, &exitAudioTask, portMAX_DELAY);
+    while (AudioTaskIsRunning) {}
+
+
+    // Stop tasks
+    printf("PowerDown: stopping tasks.\n");
+
+    xQueueSend(vidQueue, &param, portMAX_DELAY);
+    while (videoTaskIsRunning) { vTaskDelay(1); }
+
+	#ifdef MY_LYNX_INTERNAL_GAME_SELECT
+  odroid_settings_ForceInternalGameSelect_set(1);
+	#endif
+
+    gpio_set_level(GPIO_NUM_2, 0);
+    // Set menu application
+	odroid_settings_RomFilePath_set("");
+	
+    odroid_system_application_set_factory();
+    // Reset
+    esp_restart();
+}
+
 NOINLINE void DoMenuHome(bool save)
 {
     uint16_t* param = TASK_BREAK;
@@ -341,21 +372,26 @@ NOINLINE void DoMenuHome(bool save)
     xQueueSend(vidQueue, &param, portMAX_DELAY);
     while (videoTaskIsRunning) { vTaskDelay(1); }
 
-    odroid_gamepad_state joystick;   
-    odroid_input_gamepad_read(&joystick);
-    if (!joystick.values[ODROID_INPUT_START] && !save)
-    {
-       save = odroid_ui_ask(" Save current state? Yes=A ; No=B ");
-    }
+//    odroid_gamepad_state joystick;   
+//    odroid_input_gamepad_read(&joystick);
+//    if (!joystick.values[ODROID_INPUT_START] && !save)
+//    {
+//       save = odroid_ui_ask(" Save current state? Yes=A ; No=B ");
+//    }
     odroid_display_show_hourglass();
 
-    if (save) gpio_set_level(GPIO_NUM_2, 1);
+       if (save){
+		gpio_set_level(GPIO_NUM_2, 1);
 
-    // state
-    printf("PowerDown: Saving state.\n");
-    if (!joystick.values[ODROID_INPUT_START] && save) {
+		// state
+		printf("PowerDown: Saving state.\n");
+    
        SaveState();
-    }
+    }else{
+		printf("PowerDown: Without save.");
+	}
+	
+	
 #ifdef MY_LYNX_INTERNAL_GAME_SELECT
   odroid_settings_ForceInternalGameSelect_set(1);
 #endif
@@ -758,8 +794,9 @@ void odroidgo_retro_init(void) {
 	   printf("File: %s\n", rc);
 	   odroid_game.path = rc;
 	} else {
-	   printf("File: ---\n");
-	   odroid_game.path = "/sd/roms/lynx/_debug.lnx";
+	   //printf("File: ---\n");
+	   //odroid_game.path = "/sd/roms/lynx/_debug.lnx";
+	   return_to_bootmanager();
 	}
 	
 	odroid_game.data = NULL;

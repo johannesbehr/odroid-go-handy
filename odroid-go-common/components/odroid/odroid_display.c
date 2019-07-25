@@ -2,10 +2,10 @@
 
 #include "odroid_display.h"
 #include "image_sd_card_alert.h"
-#include "image_sd_card_unknown.h"
+//#include "image_sd_card_unknown.h"
 #include "hourglass_empty_black_48dp.h"
 
-#include "image_splash.h"
+//#include "image_splash.h"
 
 #include "freertos/FreeRTOS.h"
 #include "esp_system.h"
@@ -1207,7 +1207,7 @@ int is_backlight_initialized()
 
 void odroid_display_show_splash()
 {
-    ili9341_write_frame_rectangleLE(0, 0, image_splash.width, image_splash.height, image_splash.pixel_data);
+    //ili9341_write_frame_rectangleLE(0, 0, image_splash.width, image_splash.height, image_splash.pixel_data);
 
     // // Drain SPI queue
     // xTaskToNotify = 0;
@@ -1242,8 +1242,8 @@ void odroid_display_show_sderr(int errNum)
     switch(errNum)
     {
         case ODROID_SD_ERR_BADFILE:
-            ili9341_write_frame_rectangleLE(0, 0, image_sd_card_unknown.width, image_sd_card_unknown.height, image_sd_card_unknown.pixel_data); // Bad File image
-            break;
+            //ili9341_write_frame_rectangleLE(0, 0, image_sd_card_unknown.width, image_sd_card_unknown.height, image_sd_card_unknown.pixel_data); // Bad File image
+            //break;
 
         case ODROID_SD_ERR_NOCARD:
             ili9341_write_frame_rectangleLE(0, 0, image_sd_card_alert.width, image_sd_card_alert.height, image_sd_card_alert.pixel_data); // No Card image

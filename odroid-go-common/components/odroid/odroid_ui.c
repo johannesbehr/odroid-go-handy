@@ -17,7 +17,9 @@
 //#include <stddef.h>
 //#include <limits.h>
 #include "font8x8_basic.h"
+#include "background.h"
 #include <dirent.h>
+#include "font.c"
 
 extern bool QuickLoadState(FILE *f);
 extern bool QuickSaveState(FILE *f);
@@ -39,7 +41,8 @@ odroid_battery_state battery;
 static bool short_cut_menu_open = false;
 
 uint16_t *framebuffer = NULL;
-//char *font8x8_basic2;
+uint16_t framebuffer_height = 16;
+uint16_t framebuffer_width = 320;
 
 // 0x7D000
 #define QUICK_SAVE_BUFFER_SIZE (512 * 1024)
@@ -51,11 +54,11 @@ static bool quicksave_done = false;
 
 const char* SD_TMP_PATH_SAVE = "/sd/odroid/data/.quicksav.dat";
 
-#define color_default 0x632c
-#define color_selected 0xffff
 #define color_black 0x0000
 #define color_bg_default 0x00ff
-    
+#define color_default 0xffff
+#define color_selected 0xffe0    
+
 char buf[42];
 
 int exec_menu(bool *restart_menu, odroid_ui_func_window_init_def func_window_init);
@@ -150,6 +153,19 @@ void draw_line(const char *text) {
 	ili9341_write_frame_rectangleLE(0, 0, 320, 8, framebuffer);
 }
 
+void clear_framebuffer(uint16_t width, uint16_t height, uint16_t row){
+	
+	
+	uint16_t* image = (uint16_t*)image_background + (row * 320);
+	
+	for(int i = 0; i< width * height; i++){
+			framebuffer[i] = *image;
+			image++;
+	}
+	//memset(framebuffer, 0, width * height * 2);
+}
+
+
 void draw_char(uint16_t x, uint16_t y, char c, uint16_t color) {
 	renderToFrameBuffer(0, 0, font8x8_basic[(unsigned char)c], color, 0, 8);
 	ili9341_write_frame_rectangleLE(x, y, 8, 8, framebuffer);
@@ -158,6 +174,16 @@ void draw_char(uint16_t x, uint16_t y, char c, uint16_t color) {
 void draw_chars(uint16_t x, uint16_t y, uint16_t width, char *text, uint16_t color, uint16_t color_bg) {
 	render(0, 0, width, text, color, color_bg);
 	ili9341_write_frame_rectangleLE(x, y, width * 8, 8, framebuffer);
+}
+
+void draw_chars3(uint16_t x, uint16_t y,  char *text, uint16_t length, uint16_t color) {
+	clear_framebuffer(framebuffer_width, framebuffer_height, y);
+	if(length>0){
+		int text_height = FntLineHeight();
+		int text_width = FntLineWidth(text,length);
+		draw_text((framebuffer_width-text_width)/2, text_height - 4, text, length, color);
+	}
+	ili9341_write_frame_rectangleLE(x, y,framebuffer_width, framebuffer_height, framebuffer);
 }
 
 void draw_empty_line() {
@@ -615,6 +641,8 @@ int comparator(const void *p, const void *q)
 
 char *odroid_ui_choose_file(const char *path, const char *ext) {
     char* selected_file = odroid_settings_RomFilePath_get();
+	uint8_t cancel = 0;
+	
     if (selected_file) {
         if (strlen(selected_file) <strlen(ext)+1 ||
             strcasecmp(ext, &selected_file[strlen(selected_file)-strlen(ext)])!=0 ) {
@@ -727,6 +755,8 @@ char *odroid_ui_choose_file(const char *path, const char *ext) {
     
     uint8_t repeat = 0;
     
+	ili9341_write_frame_rectangleLE(0, 0, 320, 240, image_background);
+	
     while (run)
     {
         odroid_gamepad_state joystick;
@@ -741,8 +771,14 @@ char *odroid_ui_choose_file(const char *path, const char *ext) {
              last_key = -1;
          }
         } else {
-            if (joystick.values[ODROID_INPUT_B]) {
+            if (joystick.values[ODROID_INPUT_MENU]) {
+                last_key = ODROID_INPUT_MENU;
+				cancel = 1;
+				run = false;
+			}
+			if (joystick.values[ODROID_INPUT_B]) {
                 last_key = ODROID_INPUT_B;
+				run = false;
                     //entry_rc = ODROID_UI_FUNC_TOGGLE_RC_MENU_CLOSE;
             } else if (joystick.values[ODROID_INPUT_VOLUME]) {
                 last_key = ODROID_INPUT_VOLUME;
@@ -790,19 +826,29 @@ char *odroid_ui_choose_file(const char *path, const char *ext) {
             draw_chars(x, y, 32, text, color_default, color_bg_default);
             printf("Selected: %d; %s\n", selected, text);
             */
+            int y_offset = 60;
             int x = 0;
-            for (int i = 0;i < 30; i++) {
-                int y = i * 8;
-                int entry = selected + i - 15;
+			int rows_per_page = (240 - y_offset) / (framebuffer_height + 1);
+			int page = selected / rows_per_page;
+			
+            for (int i = 0;i < rows_per_page; i++) {
+                int y = y_offset + i * (framebuffer_height + 1);
+                int entry = i + (page * rows_per_page);//selected + i - 15;
                 char *text;
                 if (entry>=0 && entry < count)
                 {
                     text = (char*)entries_refs[entry];
-                } else
-                {
-                    text = " ";
-                }
-                draw_chars(x, y, 39, text, entry==selected?color_selected:color_default, color_bg_default);
+
+					int len = strlen(text);
+					if(len>4){
+						len = len-4;
+					}
+					
+					draw_chars3(x , y, text,len, entry==selected?color_selected:color_default);
+				}else{
+					// Draw empty line
+					draw_chars3(x , y, NULL,0, 0);
+				}
             }
         }
         usleep(20*1000UL);
@@ -812,6 +858,11 @@ char *odroid_ui_choose_file(const char *path, const char *ext) {
     //draw_empty_line();
     odroid_display_unlock();
     ili9341_write_frame_lynx(NULL, NULL, false);
+	
+	if(cancel){
+		return NULL;
+	}
+	
     //char *file = &entries_buffer[entries_refs[selected]];
     char *file = (char*)entries_refs[selected];
     char *rc = (char*)malloc(strlen(path) + 1+ strlen(file)+1);
