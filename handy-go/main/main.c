@@ -598,7 +598,7 @@ size_t odroid_retro_audio_sample_batch_t(const int16_t *data, size_t frames) {
    return 0;
 }
 
-    uint16_t menuButtonFrameCount;
+    uint16_t menuButtonFrameCount, volumeButtonFrameCount;
     odroid_gamepad_state previousState;
     bool ignoreMenuButton, menu_restart;
     
@@ -646,6 +646,15 @@ void process_keys(odroid_gamepad_state *joystick)
             menuButtonFrameCount = 0;
         }
 
+		 if (previousState.values[ODROID_INPUT_VOLUME] && joystick->values[ODROID_INPUT_VOLUME])
+        {
+            ++volumeButtonFrameCount;
+        }
+        else
+        {
+            volumeButtonFrameCount = 0;
+        }
+		
         // Note: this will cause an exception on 2nd Core in Debug mode
         /*
         if (menuButtonFrameCount > 60 * 2)
@@ -666,9 +675,18 @@ void process_keys(odroid_gamepad_state *joystick)
             DoMenuHome(false);
         }
 
-        if (joystick->values[ODROID_INPUT_VOLUME] || menu_restart)
+		// A short press on the volume button should do what a user expects from a volume button: change the volume!
+		if (!previousState.values[ODROID_INPUT_VOLUME] && joystick->values[ODROID_INPUT_VOLUME])
         {
-            menu_restart = odroid_ui_menu_ext(menu_restart, &menu_lynx_init);
+            odroid_audio_volume_change();
+            printf("main: Volume=%d\n", odroid_audio_volume_get());
+        }
+
+		
+        // The menu should appear if the volume button is hold for a short while 
+		if (volumeButtonFrameCount > 60 * 1 || menu_restart)
+        {
+			menu_restart = odroid_ui_menu_ext(menu_restart, &menu_lynx_init);
             if (previous_scaling_enabled != scaling_enabled ||
                 previous_filtering != filtering ||
                 previous_rotate != rotate) {
@@ -676,12 +694,6 @@ void process_keys(odroid_gamepad_state *joystick)
               {
                 update_display_task();
               }
-            
-              // display_func_change = true;
-              //odroid_display_lock();
-              //ili9341_write_frame_lynx(NULL, NULL, false);
-              //update_display_func();
-              //odroid_display_unlock();
             }
         }
 
